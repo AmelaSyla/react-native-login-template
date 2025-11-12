@@ -11,11 +11,18 @@ import { theme } from '../core/theme'
 import { emailValidator } from '../helpers/emailValidator'
 import { passwordValidator } from '../helpers/passwordValidator'
 
+import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { getFirestore, doc, setDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { app } from '../firebaseconfig';
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState({ value: '', error: '' })
   const [password, setPassword] = useState({ value: '', error: '' })
 
-  const onLoginPressed = () => {
+  const onLoginPressed = async () => {
     const emailError = emailValidator(email.value)
     const passwordError = passwordValidator(password.value)
     if (emailError || passwordError) {
@@ -23,10 +30,33 @@ export default function LoginScreen({ navigation }) {
       setPassword({ ...password, error: passwordError })
       return
     }
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Dashboard' }],
-    })
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email.value, password.value)
+      const user = userCredential.user
+
+      const userRef = doc(db, "users", user.uid)
+      const docSnap = await getDoc(userRef)
+      
+      if (!docSnap.exists()) {
+        await setDoc(userRef, {
+          email: user.email,
+          name: user.email.split('@')[0],
+          createdAt: serverTimestamp()
+        })
+      } else {
+        await setDoc(userRef, {
+          lastLogin: serverTimestamp()
+        }, { merge: true })
+      }
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Dashboard' }],
+      })
+    } catch (error) {
+      setPassword({ ...password, error: error.message })
+    }
   }
 
   return (
